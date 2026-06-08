@@ -1,3 +1,4 @@
+// server.js
 const express = require('express');
 const cors = require('cors');
 const db = require('./db');
@@ -8,9 +9,12 @@ require('dotenv').config();
 const app = express();
 app.use(cors());
 app.use(express.json());
-const JWT_SECRET = 'yibs_super_secret_key_2026';
 
-// --- MIDDLEWARE ---
+// Use environment variable or default (Render sets PORT automatically)
+const PORT = process.env.PORT || 5000;
+const JWT_SECRET = process.env.JWT_SECRET || 'yibs_super_secret_key_2026';
+
+// MIDDLEWARE
 const authenticate = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
   if (!token) return res.status(401).json({ message: 'Access denied' });
@@ -20,7 +24,7 @@ const authenticate = (req, res, next) => {
   } catch (err) { res.status(400).json({ message: 'Invalid token' }); }
 };
 
-// NEW: Role-based authorization middleware
+// Role-based authorization middleware
 const authorize = (...roles) => {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
@@ -30,9 +34,34 @@ const authorize = (...roles) => {
   };
 };
 
-// ==========================================
+// Auto-initialize database on startup
+async function initializeDatabase() {
+  try {
+    const isPostgres = process.env.NODE_ENV === 'production' && process.env.DATABASE_URL;
+    let result;
+    
+    if (isPostgres) {
+      const res = await db.query('SELECT COUNT(*) FROM users');
+      result = { count: parseInt(res.rows[0].count) };
+    } else {
+      result = await db.getAsync('SELECT COUNT(*) as count FROM users');
+    }
+    
+    if (result.count === 0) {
+      console.log('🌱 No users found, running database seed...');
+      const seedDatabase = require('./seed');
+      await seedDatabase();
+    } else {
+      console.log('✅ Database already initialized with', result.count, 'users');
+    }
+  } catch (err) {
+    console.error('⚠️ Database initialization check failed:', err.message);
+    console.log('📝 You may need to run: npm run seed');
+  }
+}
+
 // MODULE 1: AUTHENTICATION
-// ==========================================
+
 app.post('/api/auth/login', async (req, res) => {
   const { username, password } = req.body;
   try {
@@ -50,9 +79,7 @@ app.post('/api/auth/login', async (req, res) => {
   } catch (err) { res.status(500).json({ message: 'Server error' }); }
 });
 
-// ==========================================
-// ADMIN ONLY ROUTES (Academic & Financial)
-// ==========================================
+// ADMIN ONLY ROUTES
 app.get('/api/students', authenticate, authorize('admin'), async (req, res) => {
   try {
     const students = await db.allAsync(`SELECT s.id, s.admission_no, s.first_name, s.last_name, c.name as class_name FROM students s LEFT JOIN classes c ON s.class_id = c.id ORDER BY s.id ASC`);
@@ -89,6 +116,7 @@ app.get('/api/classes', authenticate, authorize('admin'), async (req, res) => {
   try { res.json(await db.allAsync(`SELECT c.*, COUNT(s.id) as student_count FROM classes c LEFT JOIN students s ON c.id = s.class_id GROUP BY c.id`)); } 
   catch (err) { res.status(500).send('Server Error'); }
 });
+
 app.post('/api/classes', authenticate, authorize('admin'), async (req, res) => {
   try { res.json(await db.runAsync('INSERT INTO classes (name, level) VALUES (?, ?)', [req.body.name, req.body.level])); } 
   catch (err) { res.status(500).send('Server Error'); }
@@ -104,14 +132,11 @@ app.post('/api/notifications', authenticate, authorize('admin'), async (req, res
   catch (err) { res.status(500).send('Server Error'); }
 });
 
-// ==========================================
-// TEACHER ROUTES (Strictly their own students)
-// ==========================================
+// TEACHER ROUTES
 app.get('/api/my-students', authenticate, authorize('teacher'), async (req, res) => {
   try {
     const teacher = await db.getAsync('SELECT id FROM teachers WHERE user_id = ?', [req.user.id]);
     if (!teacher) return res.json([]);
-    // Fetches ONLY students in classes this teacher is assigned to
     const students = await db.allAsync(`
       SELECT DISTINCT s.id, s.admission_no, s.first_name, s.last_name, c.name as class_name 
       FROM students s 
@@ -133,9 +158,7 @@ app.post('/api/results', authenticate, authorize('teacher', 'admin'), async (req
   catch (err) { res.status(500).send('Server Error'); }
 });
 
-// ==========================================
-// STUDENT ROUTES (Strictly their own data)
-// ==========================================
+// STUDENT ROUTES
 app.get('/api/results/:studentId', authenticate, async (req, res) => {
   if (req.user.role === 'student' && req.user.profile.id !== parseInt(req.params.studentId)) return res.status(403).send('Access denied');
   try { res.json(await db.allAsync(`SELECT r.score, sub.name as subject_name, e.name as exam_name FROM results r JOIN subjects sub ON r.subject_id = sub.id JOIN exams e ON r.exam_id = e.id WHERE r.student_id = ?`, [req.params.studentId])); } 
@@ -172,13 +195,12 @@ app.get('/api/notifications', authenticate, async (req, res) => {
   catch (err) { res.status(500).send('Server Error'); }
 });
 
-// ==========================================
-// IT SUPPORT ROUTES (Full System & IT Access)
-// ==========================================
+// IT SUPPORT ROUTES
 app.get('/api/assets', authenticate, authorize('it_support'), async (req, res) => {
   try { res.json(await db.allAsync('SELECT * FROM assets ORDER BY id DESC')); } 
   catch (err) { res.status(500).send('Server Error'); }
 });
+
 app.post('/api/assets', authenticate, authorize('it_support'), async (req, res) => {
   try { res.json(await db.runAsync('INSERT INTO assets (name, type, location, status, last_maintenance) VALUES (?, ?, ?, ?, ?)', [req.body.name, req.body.type, req.body.location, req.body.status, req.body.last_maintenance])); } 
   catch (err) { res.status(500).send('Server Error'); }
@@ -188,20 +210,18 @@ app.get('/api/tickets', authenticate, authorize('it_support'), async (req, res) 
   try { res.json(await db.allAsync('SELECT t.*, u.username as reporter FROM helpdesk_tickets t JOIN users u ON t.reporter_id = u.id ORDER BY t.created_at DESC')); } 
   catch (err) { res.status(500).send('Server Error'); }
 });
+
 app.put('/api/tickets/:id', authenticate, authorize('it_support'), async (req, res) => {
   try { res.json(await db.runAsync('UPDATE helpdesk_tickets SET status = ? WHERE id = ?', [req.body.status, req.params.id])); } 
   catch (err) { res.status(500).send('Server Error'); }
 });
 
-// IT Support "Access to Everything" -> Master User List
 app.get('/api/users', authenticate, authorize('it_support'), async (req, res) => {
   try { res.json(await db.allAsync('SELECT id, username, role FROM users ORDER BY id ASC')); } 
   catch (err) { res.status(500).send('Server Error'); }
 });
 
-// ==========================================
-// DASHBOARD (Adapts based on Role)
-// ==========================================
+// DASHBOARD
 app.get('/api/reports/dashboard', authenticate, authorize('admin', 'it_support'), async (req, res) => {
   try {
     if (req.user.role === 'admin') {
@@ -209,7 +229,7 @@ app.get('/api/reports/dashboard', authenticate, authorize('admin', 'it_support')
       const t = await db.getAsync('SELECT COUNT(*) as count FROM teachers');
       const r = await db.getAsync('SELECT SUM(amount) as total FROM fees');
       res.json({ students: s.count, teachers: t.count, revenue: r.total || 0 });
-    } else { // IT Support Dashboard
+    } else {
       const a = await db.getAsync('SELECT COUNT(*) as count FROM assets');
       const aa = await db.getAsync("SELECT COUNT(*) as count FROM assets WHERE status = 'Active'");
       const ot = await db.getAsync("SELECT COUNT(*) as count FROM helpdesk_tickets WHERE status != 'Resolved'");
@@ -218,5 +238,23 @@ app.get('/api/reports/dashboard', authenticate, authorize('admin', 'it_support')
   } catch (err) { res.status(500).send('Server Error'); }
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 YIBS Secure Backend running on http://localhost:${PORT}`));
+// Health check endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'YIBS School Management API is running!',
+    status: 'online',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Start server and initialize database
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`🚀 YIBS Secure Backend running on http://localhost:${PORT}`);
+  console.log(` Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`💾 Database: ${process.env.NODE_ENV === 'production' ? 'PostgreSQL (Render)' : 'SQLite (Local)'}`);
+  
+  // Initialize database after server starts
+  initializeDatabase();
+});
+
+module.exports = app;
