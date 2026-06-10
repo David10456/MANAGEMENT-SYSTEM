@@ -12,7 +12,7 @@ app.use(cors({
     'https://frontend-infrastructure-2k12-bnemohntk-david10456s-projects.vercel.app',  // ← Your Vercel frontend URL
     'http://localhost:3000',                           // Local React dev
     'http://localhost:5173',                           // Local Vite dev
-    'http://localhost:5000'                            // Local backend
+    'https://management-system-3-4u4c.onrender.com'                            // Local backend
   ],
   credentials: true
 }));
