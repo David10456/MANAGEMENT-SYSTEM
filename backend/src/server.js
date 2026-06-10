@@ -257,21 +257,22 @@ app.get('/', (req, res) => {
 // Add this BEFORE the /api/seed route
 const SEED_TOKEN = process.env.SEED_TOKEN || '44406ee0ed19ad891bf4d86aed45ffea';
 
+// ONE-TIME SEED ENDPOINT (remove after running!)
 app.get('/api/seed', async (req, res) => {
-  // Simple token check
-  const token = req.headers['x-seed-token'];
-  if (token !== SEED_TOKEN) {
-    return res.status(403).json({ message: 'Forbidden' });
-  }
-  
   try {
     console.log('🌱 Running database seed...');
     const seedDatabase = require('./seed');
     await seedDatabase();
-    res.json({ message: '✅ Database seeded successfully!' });
+    res.json({ 
+      message: '✅ Database seeded successfully!',
+      note: 'Remove this endpoint now for security'
+    });
   } catch (err) {
     console.error('❌ Seed failed:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ 
+      error: err.message,
+      stack: err.stack
+    });
   }
 });
 
