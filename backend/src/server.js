@@ -255,7 +255,7 @@ app.get('/', (req, res) => {
   });
 });
 // Add this BEFORE the /api/seed route
-const SEED_TOKEN = process.env.SEED_TOKEN || 'change-this-to-something-random-123';
+const SEED_TOKEN = process.env.SEED_TOKEN || '44406ee0ed19ad891bf4d86aed45ffea';
 
 app.get('/api/seed', async (req, res) => {
   // Simple token check
