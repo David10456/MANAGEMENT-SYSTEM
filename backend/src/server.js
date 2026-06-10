@@ -254,13 +254,14 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
-// Add this BEFORE the /api/seed route
 const SEED_TOKEN = process.env.SEED_TOKEN || '44406ee0ed19ad891bf4d86aed45ffea';
+// Add this BEFORE the /api/seed route
+
 
 // ONE-TIME SEED ENDPOINT (remove after running!)
 app.get('/api/seed', async (req, res) => {
   try {
-    console.log('🌱 Running database seed...');
+    console.log(' Running database seed...');
     const seedDatabase = require('./seed');
     await seedDatabase();
     res.json({ 
