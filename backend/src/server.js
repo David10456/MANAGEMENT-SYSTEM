@@ -254,6 +254,26 @@ app.get('/', (req, res) => {
     timestamp: new Date().toISOString()
   });
 });
+// Add this BEFORE the /api/seed route
+const SEED_TOKEN = process.env.SEED_TOKEN || 'change-this-to-something-random-123';
+
+app.get('/api/seed', async (req, res) => {
+  // Simple token check
+  const token = req.headers['x-seed-token'];
+  if (token !== SEED_TOKEN) {
+    return res.status(403).json({ message: 'Forbidden' });
+  }
+  
+  try {
+    console.log('🌱 Running database seed...');
+    const seedDatabase = require('./seed');
+    await seedDatabase();
+    res.json({ message: '✅ Database seeded successfully!' });
+  } catch (err) {
+    console.error('❌ Seed failed:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Start server and initialize database
 app.listen(PORT, '0.0.0.0', () => {
