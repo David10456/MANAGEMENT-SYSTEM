@@ -7,7 +7,15 @@ const jwt = require('jsonwebtoken');
 require('dotenv').config();
 
 const app = express();
-app.use(cors());
+app.use(cors({
+  origin: [
+    'https://frontend-infrastructure-2k12-bnemohntk-david10456s-projects.vercel.app',  // ← Your Vercel frontend URL
+    'http://localhost:3000',                           // Local React dev
+    'http://localhost:5173',                           // Local Vite dev
+    'http://localhost:5000'                            // Local backend
+  ],
+  credentials: true
+}));
 app.use(express.json());
 
 // Use environment variable or default (Render sets PORT automatically)
